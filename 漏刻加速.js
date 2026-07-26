@@ -432,9 +432,6 @@
         pb.className = 'preset-btn';
         pb.textContent = PRESETS[_pi] + 'x';
         pb.setAttribute('data-speed', String(PRESETS[_pi]));
-        (function (spd) {
-            pb.addEventListener('click', function () { _setSpeedUI(spd); });
-        })(PRESETS[_pi]);
         _presetRow.appendChild(pb);
     }
 
@@ -477,6 +474,13 @@
         var _vesselEl = document.getElementById('漏刻');
         var _marksEl = document.getElementById('漏刻-marks');
         var _presetBtns = _presetRow.querySelectorAll('.preset-btn');
+        for (var _pbIdx = 0; _pbIdx < _presetBtns.length; _pbIdx++) {
+            (function (btn) {
+                btn.addEventListener('click', function () {
+                    _setSpeedUI(parseFloat(btn.getAttribute('data-speed')));
+                });
+            })(_presetBtns[_pbIdx]);
+        }
 
         // Build scale marks
         (function () {
