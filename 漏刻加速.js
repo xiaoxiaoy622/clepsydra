@@ -534,51 +534,35 @@
             }
         }
 
-        var _panelRafId = 0;
-        var _closeTimerId = 0;
+        var _panelOpen = false;
 
-        function _openPanel() {
-            if (_closeTimerId) { _origClearTimeout.call(window, _closeTimerId); _closeTimerId = 0; }
-            if (_panelRafId) { cancelAnimationFrame(_panelRafId); _panelRafId = 0; }
-
-            var stampRect = _stamp.getBoundingClientRect();
-            var vpW = window.innerWidth;
-            var vpH = window.innerHeight;
-            var panelW = 210;
-
-            var pLeft = stampRect.left;
-            if (pLeft + panelW > vpW - 10) pLeft = vpW - panelW - 10;
-            if (pLeft < 10) pLeft = 10;
-
-            var pTop = stampRect.bottom + 8;
-            _panel.style.left = pLeft + 'px';
-            _panel.style.top = pTop + 'px';
-            _panel.classList.add('open');
-
-            var panelH = _panel.offsetHeight;
-            if (pTop + panelH > vpH - 10) {
-                pTop = stampRect.top - panelH - 8;
-                if (pTop < 10) pTop = 10;
+        function _togglePanel(open) {
+            _panelOpen = typeof open === 'boolean' ? open : !_panelOpen;
+            if (_panelOpen) {
+                _panel.style.left = '';
+                _panel.style.top = '';
+                var stampRect = _stamp.getBoundingClientRect();
+                var vpW = window.innerWidth;
+                var vpH = window.innerHeight;
+                var panelH = _panel.offsetHeight;
+                var panelW = _panel.offsetWidth;
+                var pLeft = stampRect.left;
+                if (pLeft + panelW > vpW - 10) pLeft = Math.max(10, vpW - panelW - 10);
+                if (pLeft < 10) pLeft = 10;
+                var pTop = stampRect.bottom + 8;
+                if (pTop + panelH > vpH - 10) pTop = Math.max(10, stampRect.top - panelH - 8);
+                _panel.style.left = pLeft + 'px';
+                _panel.style.top = pTop + 'px';
+                _origSetTimeout.call(window, function () {
+                    var firstBtn = _presetRow.querySelector('.preset-btn');
+                    if (firstBtn) firstBtn.focus();
+                }, 50);
+            } else {
+                _origSetTimeout.call(window, function () {
+                    _stamp.focus();
+                }, 300);
             }
-            _panel.style.top = pTop + 'px';
-
-            _panelRafId = requestAnimationFrame(function () {
-                _panelRafId = 0;
-            });
-
-            _origSetTimeout.call(window, function () {
-                var firstBtn = _presetRow.querySelector('.preset-btn');
-                if (firstBtn) firstBtn.focus();
-            }, 50);
-        }
-
-        function _closePanel() {
-            if (_panelRafId) { cancelAnimationFrame(_panelRafId); _panelRafId = 0; }
-            _panel.classList.remove('open');
-            _closeTimerId = _origSetTimeout.call(window, function () {
-                _closeTimerId = 0;
-                _stamp.focus();
-            }, 300);
+            _panel.classList.toggle('open', _panelOpen);
         }
 
         function _togglePersist() {
@@ -600,51 +584,49 @@
 
         // --- Stamp drag + click/dblclick ---
         (function (el) {
-            var dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0, moved = false;
+            var _dragging = false, _sx = null, _sy = null, _moved = false;
             var _clickTimer = 0;
 
             function _onDown(e) {
-                dragging = true; moved = false;
+                _dragging = true; _moved = false;
                 var t = e.touches ? e.touches[0] : e;
-                startX = t.clientX; startY = t.clientY;
-                var r = el.getBoundingClientRect();
-                origLeft = r.left; origTop = r.top;
+                _sx = t.clientX; _sy = t.clientY;
+                _ballLeft = el.offsetLeft; _ballTop = el.offsetTop;
                 el.classList.add('dragging');
+                if (!e.touches) e.preventDefault();
             }
 
             function _onMove(e) {
-                if (!dragging) return;
+                if (!_dragging || _sx === null) return;
                 var t = e.touches ? e.touches[0] : e;
-                var dx = t.clientX - startX, dy = t.clientY - startY;
-                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-                var nLeft = Math.max(0, Math.min(window.innerWidth - 54, origLeft + dx));
-                var nTop = Math.max(0, Math.min(window.innerHeight - 80, origTop + dy));
-                el.style.left = nLeft + 'px';
-                el.style.top = nTop + 'px';
-                _ballLeft = nLeft;
-                _ballTop = nTop;
-                if (_panel.classList.contains('open')) {
-                    _panel.style.left = nLeft + 'px';
-                    _panel.style.top = (nTop + 64) + 'px';
+                var dx = t.clientX - _sx, dy = t.clientY - _sy;
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _moved = true;
+                _ballLeft = Math.max(0, Math.min(window.innerWidth - 54, _ballLeft + dx));
+                _ballTop = Math.max(0, Math.min(window.innerHeight - 80, _ballTop + dy));
+                el.style.left = _ballLeft + 'px';
+                el.style.top = _ballTop + 'px';
+                if (_panelOpen) {
+                    _panel.style.left = _ballLeft + 'px';
+                    _panel.style.top = (_ballTop + 64) + 'px';
                 }
+                _sx = t.clientX; _sy = t.clientY;
+                e.preventDefault();
             }
 
             function _onUp() {
-                if (!dragging) return;
-                dragging = false;
+                if (!_dragging) return;
+                _dragging = false;
                 el.classList.remove('dragging');
-                el._dragged = moved;
+                el._dragged = _moved;
+                _sx = null;
             }
 
-            el.addEventListener('touchstart', _onDown, { passive: false });
-            el.addEventListener('touchmove', _onMove, { passive: false });
-            el.addEventListener('touchend', _onUp, { passive: false });
             el.addEventListener('mousedown', _onDown);
             document.addEventListener('mousemove', _onMove);
             document.addEventListener('mouseup', _onUp);
-            el.addEventListener('mouseleave', function () {
-                if (dragging) _onUp();
-            });
+            el.addEventListener('touchstart', _onDown, { passive: false });
+            document.addEventListener('touchmove', _onMove, { passive: false });
+            document.addEventListener('touchend', _onUp);
 
             el.addEventListener('click', function (e) {
                 if (el._dragged) { el._dragged = false; return; }
@@ -656,8 +638,7 @@
                 }
                 _clickTimer = _origSetTimeout.call(window, function () {
                     _clickTimer = 0;
-                    if (!_panel.classList.contains('open')) _openPanel();
-                    else _closePanel();
+                    _togglePanel();
                 }, 250);
             }, false);
         })(_stamp);
@@ -674,12 +655,12 @@
             function onDown(e) {
                 dragging = true;
                 _setSpeedUI(snapToPreset(posToSpeed(getPos(e))));
-                if (!e.touches) e.preventDefault();
+                e.preventDefault();
             }
             function onMove(e) {
                 if (!dragging) return;
                 _setSpeedUI(snapToPreset(posToSpeed(getPos(e))));
-                if (!e.touches) e.preventDefault();
+                e.preventDefault();
             }
             function onUp() { dragging = false; }
             _thumbEl.addEventListener('mousedown', onDown);
@@ -693,7 +674,7 @@
         })();
 
         // --- Close button ---
-        _panelClose.addEventListener('click', _closePanel);
+        _panelClose.addEventListener('click', function () { _togglePanel(false); });
 
         // --- Persist button ---
         _btnPersist.addEventListener('click', _togglePersist);
@@ -703,21 +684,20 @@
 
         // --- Click outside to close ---
         document.addEventListener('mousedown', function (e) {
-            if (_panel.classList.contains('open') && !_panel.contains(e.target) && !_stamp.contains(e.target)) _closePanel();
+            if (_panelOpen && !_panel.contains(e.target) && !_stamp.contains(e.target)) _togglePanel(false);
         });
 
         // --- Stamp keyboard ---
         _stamp.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                if (!_panel.classList.contains('open')) _openPanel();
-                else _closePanel();
+                _togglePanel();
             }
         });
 
         // --- Panel keyboard trap ---
         _panel.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') { _closePanel(); return; }
+            if (e.key === 'Escape') { _togglePanel(false); return; }
             if (e.key !== 'Tab') return;
             var focusable = _panel.querySelectorAll('.preset-btn, #leokePanelClose, #leokeBtnPersist, #leokeBtnReset');
             if (focusable.length === 0) return;
@@ -775,20 +755,18 @@
             } else if (e.key === '0' && (e.ctrlKey || e.altKey)) {
                 _setSpeedUI(1);
             } else if (e.key === '[' || e.key === '\u3010') {
-                var idx = -1;
-                for (var k = 0; k < PRESETS.length; k++) { if (Math.abs(PRESETS[k] - currentSpeed) < 0.01) { idx = k; break; } }
-                if (idx < 0) { for (var k2 = 0; k2 < PRESETS.length; k2++) { if (PRESETS[k2] === 1) { idx = k2; break; } } }
+                var idx = PRESETS.indexOf(currentSpeed);
+                if (idx < 0) idx = PRESETS.indexOf(1);
                 if (idx > 0) _setSpeedUI(PRESETS[idx - 1]);
             } else if (e.key === ']' || e.key === '\u3011') {
-                var idx2 = -1;
-                for (var k3 = 0; k3 < PRESETS.length; k3++) { if (Math.abs(PRESETS[k3] - currentSpeed) < 0.01) { idx2 = k3; break; } }
-                if (idx2 < 0) { for (var k4 = 0; k4 < PRESETS.length; k4++) { if (PRESETS[k4] === 1) { idx2 = k4; break; } } }
+                var idx2 = PRESETS.indexOf(currentSpeed);
+                if (idx2 < 0) idx2 = PRESETS.indexOf(1);
                 if (idx2 < PRESETS.length - 1) _setSpeedUI(PRESETS[idx2 + 1]);
             } else if (e.key === 'p' || e.key === 'P') {
                 e.preventDefault();
                 _togglePersist();
             } else if (e.key === 'Escape') {
-                _closePanel();
+                _togglePanel(false);
             }
         });
     }
